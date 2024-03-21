@@ -1,3 +1,4 @@
+import base64
 import os
 import cv2
 import numpy as np
@@ -183,125 +184,149 @@ def put_text(frame, exercise, count, fps, redio):
     )
 
 
-def main(model='yolov8s-pose.pt', sport='squat', input="0", save_dir=None, show=True):
+class PoseEstimator:
+    def __init__(self, model='yolov8s-pose.pt', sport='squat', input="0", save_dir=None, show=False):
+        self.cap = None
+        self.save_dir = None
+        self.output = None
 
-    # setup GPU
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f'Using device: {device}')
+        # setup GPU
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        print(f'Using device: {self.device}')
 
-    # Load the YOLOv8 model
-    model = YOLO(model).to(device)
+        # Load the YOLOv8 model
+        self.model = YOLO(model).to(self.device)
 
-    # Open the video file or camera
-    if input.isnumeric():
-        cap = cv2.VideoCapture(int(input))
-    else:
-        cap = cv2.VideoCapture(input)
+        # Open the video file or camera
+        if input.isnumeric():
+            self.cap = cv2.VideoCapture(int(input))
+        else:
+            self.cap = cv2.VideoCapture(input)
 
-    # For save result video
-    if save_dir is not None:
-        save_dir = os.path.join(
-            save_dir, sport,
-            datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        size = (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        output = cv2.VideoWriter(os.path.join(
-            save_dir, 'result.mp4'), fourcc, fps, size)
+        # For save result video
+        if save_dir is not None:
+            self.save_dir = os.path.join(
+                save_dir, sport,
+                datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+            if not os.path.exists(self.save_dir):
+                os.makedirs(self.save_dir)
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            fps = self.cap.get(cv2.CAP_PROP_FPS)
+            size = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                    int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+            self.output = cv2.VideoWriter(os.path.join(
+                self.save_dir, 'result.mp4'), fourcc, fps, size)
+        else:
+            self.output = None
 
-    # Set variables to record motion status
-    reaching = False
-    reaching_last = False
-    state_keep = False
-    counter = 0
+        self.sport = sport
+        self.show = show
 
-    # Loop through the video frames
-    while cap.isOpened():
-        # Read a frame from the video
-        success, frame = cap.read()
+        # Set variables to record motion status
+        self.reaching = False
+        self.reaching_last = False
+        self.state_keep = False
+        self.counter = 0
 
-        if success:
-            # Set plot size redio for inputs with different resolutions
-            plot_size_redio = max(frame.shape[1] / 960, frame.shape[0] / 540)
+    def process_frame(self, frame):
+        # Set plot size redio for inputs with different resolutions
+        plot_size_redio = max(frame.shape[1] / 960, frame.shape[0] / 540)
 
-            # Run YOLOv8 inference on the frame
-            results = model(frame)
+        # Run YOLOv8 inference on the frame
+        results = self.model(frame)
 
-            # Preventing errors caused by special scenarios
-            if results[0].keypoints.shape[1] == 0:
-                if show:
-                    put_text(frame, 'No Object', counter,
-                             round(1000 / results[0].speed['inference'], 2), plot_size_redio)
-                    scale = 640 / max(frame.shape[0], frame.shape[1])
-                    show_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
-                    cv2.imshow("YOLOv8 Inference", show_frame)
-                if save_dir is not None:
-                    output.write(frame)
+        # Preventing errors caused by special scenarios
+        if results[0].keypoints.shape[1] == 0:
+            if self.show:
+                put_text(frame, 'No Object', self.counter,
+                         round(1000 / results[0].speed['inference'], 2), plot_size_redio)
+                scale = 640 / max(frame.shape[0], frame.shape[1])
+                show_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
+                cv2.imshow("YOLOv8 Inference", show_frame)
+            else:
+                # In case you don't have a webcam, this will provide a black placeholder image.
+                black_1px = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjYGBg+A8AAQQBAHAgZQsAAAAASUVORK5CYII="
+                placeholder = base64.b64decode(black_1px.encode("ascii"))
+                return placeholder
+
+            if self.save_dir is not None:
+                self.output.write(frame)
+            return
+
+        # Get hyperparameters
+        left_points_idx = sport_list[self.sport]['left_points_idx']
+        right_points_idx = sport_list[self.sport]['right_points_idx']
+
+        # Calculate angle
+        angle = calculate_angle(
+            results[0].keypoints, left_points_idx, right_points_idx)
+
+        # Determine whether to complete once
+        if angle < sport_list[self.sport]['maintaining']:
+            self.reaching = True
+        if angle > sport_list[self.sport]['relaxing']:
+            self.reaching = False
+
+        if self.reaching != self.reaching_last:
+            self.reaching_last = self.reaching
+            if self.reaching:
+                self.state_keep = True
+            if not self.reaching and self.state_keep:
+                self.counter += 1
+                self.state_keep = False
+
+        # Visualize the results on the frame
+        annotated_frame = plot(
+            results[0], plot_size_redio,
+            # sport_list[sport]['concerned_key_points_idx'],
+            # sport_list[sport]['concerned_skeletons_idx']
+        )
+        # annotated_frame = results[0].plot(boxes=False)
+
+        # add relevant information to frame
+        put_text(
+            annotated_frame, self.sport, self.counter, round(1000 / results[0].speed['inference'], 2), plot_size_redio)
+
+        if self.save_dir is not None:
+            self.output.write(annotated_frame)
+
+        # Display the annotated frame
+        if self.show:
+            scale = 640 / \
+                max(annotated_frame.shape[0], annotated_frame.shape[1])
+            show_frame = cv2.resize(
+                annotated_frame, (0, 0), fx=scale, fy=scale)
+            cv2.imshow("YOLOv8 Inference", show_frame)
+        else:
+            # 如果 show 为 False,则通过 WebSocket 发送处理后的帧
+            # 转换为 jpeg 格式
+            _, imencode_image = cv2.imencode(".jpg", annotated_frame)
+            base64_image = base64.b64encode(
+                imencode_image).decode("utf-8")
+            return base64_image
+
+    def process(self):
+        # Loop through the video frames
+        while self.cap.isOpened():
+            # Read a frame from the video
+            success, frame = self.cap.read()
+
+            if success:
+                self.process_frame(frame)
                 # Break the loop if 'q' is pressed
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
-                continue
-
-            # Get hyperparameters
-            left_points_idx = sport_list[sport]['left_points_idx']
-            right_points_idx = sport_list[sport]['right_points_idx']
-
-            # Calculate angle
-            angle = calculate_angle(
-                results[0].keypoints, left_points_idx, right_points_idx)
-
-            # Determine whether to complete once
-            if angle < sport_list[sport]['maintaining']:
-                reaching = True
-            if angle > sport_list[sport]['relaxing']:
-                reaching = False
-
-            if reaching != reaching_last:
-                reaching_last = reaching
-                if reaching:
-                    state_keep = True
-                if not reaching and state_keep:
-                    counter += 1
-                    state_keep = False
-
-            # Visualize the results on the frame
-            annotated_frame = plot(
-                results[0], plot_size_redio,
-                # sport_list[sport]['concerned_key_points_idx'],
-                # sport_list[sport]['concerned_skeletons_idx']
-            )
-            # annotated_frame = results[0].plot(boxes=False)
-
-            # add relevant information to frame
-            put_text(
-                annotated_frame, sport, counter, round(1000 / results[0].speed['inference'], 2), plot_size_redio)
-
-            # Display the annotated frame
-            if show:
-                scale = 640 / \
-                    max(annotated_frame.shape[0], annotated_frame.shape[1])
-                show_frame = cv2.resize(
-                    annotated_frame, (0, 0), fx=scale, fy=scale)
-                cv2.imshow("YOLOv8 Inference", show_frame)
-
-            if save_dir is not None:
-                output.write(annotated_frame)
-            # Break the loop if 'q' is pressed
-            if cv2.waitKey(1) & 0xFF == ord("q"):
+            else:
+                # Break the loop if the end of the video is reached
                 break
-        else:
-            # Break the loop if the end of the video is reached
-            break
 
-    # Release the video capture object and close the display window
-    cap.release()
-    if save_dir is not None:
-        output.release()
-    cv2.destroyAllWindows()
+        # Release the video capture object and close the display window
+        self.cap.release()
+        if self.save_dir is not None:
+            self.output.release()
+        cv2.destroyAllWindows()
 
 
 if __name__ == '__main__':
-    main()
+    estimator = PoseEstimator(show=True)
+    estimator.process()
