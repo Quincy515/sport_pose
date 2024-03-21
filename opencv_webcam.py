@@ -25,8 +25,9 @@ async def send_frame(websocket: WebSocket):
 
         if success:
             jpeg = estimator.process_frame(frame)
-            await websocket.send_text(jpeg)
-            await asyncio.sleep(0.01)
+            if jpeg is not None:
+                await websocket.send_bytes(jpeg)
+                await asyncio.sleep(0.01)
 
 
 @app.websocket("/ws/video")

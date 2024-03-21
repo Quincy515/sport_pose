@@ -237,17 +237,15 @@ class PoseEstimator:
 
         # Preventing errors caused by special scenarios
         if results[0].keypoints.shape[1] == 0:
+            put_text(frame, 'No Object', self.counter,
+                     round(1000 / results[0].speed['inference'], 2), plot_size_redio)
+            scale = 640 / max(frame.shape[0], frame.shape[1])
+            show_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
             if self.show:
-                put_text(frame, 'No Object', self.counter,
-                         round(1000 / results[0].speed['inference'], 2), plot_size_redio)
-                scale = 640 / max(frame.shape[0], frame.shape[1])
-                show_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
                 cv2.imshow("YOLOv8 Inference", show_frame)
             else:
-                # In case you don't have a webcam, this will provide a black placeholder image.
-                black_1px = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjYGBg+A8AAQQBAHAgZQsAAAAASUVORK5CYII="
-                placeholder = base64.b64decode(black_1px.encode("ascii"))
-                return placeholder
+                _, imencode_image = cv2.imencode(".jpg", show_frame)
+                return imencode_image.tobytes()
 
             if self.save_dir is not None:
                 self.output.write(frame)
@@ -301,9 +299,9 @@ class PoseEstimator:
             # 如果 show 为 False,则通过 WebSocket 发送处理后的帧
             # 转换为 jpeg 格式
             _, imencode_image = cv2.imencode(".jpg", annotated_frame)
-            base64_image = base64.b64encode(
-                imencode_image).decode("utf-8")
-            return base64_image
+            # base64_image = base64.b64encode(
+            #     imencode_image).decode("utf-8")
+            return imencode_image.tobytes()
 
     def process(self):
         # Loop through the video frames
