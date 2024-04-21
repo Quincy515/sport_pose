@@ -15,12 +15,11 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # 存储连接的WebSocket客户端
 connected_clients = set()
-estimator = PoseEstimator()
 
 
-async def send_frame(websocket: WebSocket):
+async def send_frame(websocket: WebSocket, estimator: PoseEstimator):
     while estimator.cap.isOpened():
-        # Read a frame from the video
+        # 从视频中读取一帧
         success, frame = estimator.cap.read()
 
         if success:
@@ -35,18 +34,23 @@ async def video_stream(websocket: WebSocket):
     await websocket.accept()
     connected_clients.add(websocket)
 
+    # 获取查询参数中的 sport 值
+    sport = websocket.query_params.get('sport', 'squat')
+    # 初始化 PoseEstimator
+    estimator = PoseEstimator(sport=sport)
+
     try:
-        await send_frame(websocket)
+        await send_frame(websocket, estimator)
     except WebSocketDisconnect:
         # 处理客户端断开连接的情况
-        handle_disconnect(websocket)
+        handle_disconnect(websocket, estimator)
     except Exception as e:
         # 处理其他异常
         logging.error(f"Error occurred: {e}")
-        handle_disconnect(websocket)
+        handle_disconnect(websocket, estimator)
 
 
-def handle_disconnect(websocket: WebSocket):
+def handle_disconnect(websocket: WebSocket, estimator: PoseEstimator):
     if estimator.cap.isOpened():
         # 释放视频捕捉对象并关闭显示窗口
         estimator.cap.release()

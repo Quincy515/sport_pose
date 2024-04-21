@@ -34,15 +34,16 @@ sport_list = {
         'maintaining': 80,
         'relaxing': 140,
         'concerned_key_points_idx': [11, 12, 13, 14, 15],
-        'concerned_skeletons_idx': [[16, 14], [14, 12], [17, 15], [15, 13]]
+        'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
-    'jump-rope': {
-        'left_points_idx': [], # 左侧关键点索引
-        'right_points_idx': [], # 右侧关键点索引
-        'maintaining': 20, # 维持姿势的度量
-        'relaxing': 140, # 放松时的度量
-        'concerned_key_points_idx': [], # 关注的关键点索引
-        'concerned_skeletons_idx': [] # 关注的骨架索引
+    'jump': {
+        'left_points_idx': [11, 13, 15],  # 左侧关键点索引
+        'right_points_idx': [12, 14, 16],  # 右侧关键点索引
+        'maintaining': 20,  # 维持姿势的度量
+        'relaxing': 140,  # 放松时的度量
+        'concerned_key_points_idx': [11, 12, 13, 14, 15],  # 关注的关键点索引
+        # 关注的骨架索引
+        'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
 }
 
