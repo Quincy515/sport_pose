@@ -10,6 +10,7 @@ from ultralytics import YOLO
 from ultralytics.utils.plotting import Annotator, Colors
 from copy import deepcopy
 
+# 定义运行及运动参数
 sport_list = {
     'sit-up': {
         'left_points_idx': [6, 12, 14],
@@ -34,7 +35,15 @@ sport_list = {
         'relaxing': 140,
         'concerned_key_points_idx': [11, 12, 13, 14, 15],
         'concerned_skeletons_idx': [[16, 14], [14, 12], [17, 15], [15, 13]]
-    }
+    },
+    'jump-rope': {
+        'left_points_idx': [], # 左侧关键点索引
+        'right_points_idx': [], # 右侧关键点索引
+        'maintaining': 20, # 维持姿势的度量
+        'relaxing': 140, # 放松时的度量
+        'concerned_key_points_idx': [], # 关注的关键点索引
+        'concerned_skeletons_idx': [] # 关注的骨架索引
+    },
 }
 
 
@@ -154,29 +163,34 @@ def plot(pose_result, plot_size_redio, show_points=None, show_skeleton=None):
 
 
 def put_text(frame, exercise, count, fps, redio):
+    # 在图像帧上绘制一个矩形作为文本背景
     cv2.rectangle(
         frame, (int(20 * redio), int(20 * redio)
                 ), (int(300 * redio), int(163 * redio)),
         (55, 104, 0), -1
     )
 
+    # 如果运动在运动列表中，将运动名称添加到帧上
     if exercise in sport_list.keys():
         cv2.putText(
             frame, f'Exercise: {exercise}', (int(
                 30 * redio), int(50 * redio)), 0, 0.9 * redio,
             (255, 255, 255), thickness=int(2 * redio), lineType=cv2.LINE_AA
         )
+    # 如果没有检测到对象，将"No Object"添加到帧上
     elif exercise == 'No Object':
         cv2.putText(
             frame, f'No Object', (int(30 * redio),
                                   int(50 * redio)), 0, 0.9 * redio,
             (255, 255, 255), thickness=int(2 * redio), lineType=cv2.LINE_AA
         )
+    # 将计数添加到帧上
     cv2.putText(
         frame, f'Count: {count}', (int(30 * redio),
                                    int(100 * redio)), 0, 0.9 * redio,
         (255, 255, 255), thickness=int(2 * redio), lineType=cv2.LINE_AA
     )
+    # 将FPS添加到帧上
     cv2.putText(
         frame, f'FPS: {fps}', (int(30 * redio),
                                int(150 * redio)), 0, 0.9 * redio,
@@ -190,20 +204,20 @@ class PoseEstimator:
         self.save_dir = None
         self.output = None
 
-        # setup GPU
+        # 设置GPU
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f'Using device: {self.device}')
+        print(f'使用设备: {self.device}')
 
-        # Load the YOLOv8 model
+        # 加载YOLOv8模型
         self.model = YOLO(model).to(self.device)
 
-        # Open the video file or camera
+        # 打开视频文件或摄像头
         if input.isnumeric():
             self.cap = cv2.VideoCapture(int(input))
         else:
             self.cap = cv2.VideoCapture(input)
 
-        # For save result video
+        # 保存结果视频
         if save_dir is not None:
             self.save_dir = os.path.join(
                 save_dir, sport,
@@ -222,27 +236,27 @@ class PoseEstimator:
         self.sport = sport
         self.show = show
 
-        # Set variables to record motion status
+        # 设置记录运动状态的变量
         self.reaching = False
         self.reaching_last = False
         self.state_keep = False
         self.counter = 0
 
     def process_frame(self, frame):
-        # Set plot size redio for inputs with different resolutions
+        # 设置不同分辨率输入的绘图大小比例
         plot_size_redio = max(frame.shape[1] / 960, frame.shape[0] / 540)
 
-        # Run YOLOv8 inference on the frame
+        # 在帧上运行YOLOv8推断
         results = self.model(frame)
 
-        # Preventing errors caused by special scenarios
+        # 防止特殊情况导致的错误
         if results[0].keypoints.shape[1] == 0:
-            put_text(frame, 'No Object', self.counter,
+            put_text(frame, '无目标', self.counter,
                      round(1000 / results[0].speed['inference'], 2), plot_size_redio)
             scale = 640 / max(frame.shape[0], frame.shape[1])
             show_frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
             if self.show:
-                cv2.imshow("YOLOv8 Inference", show_frame)
+                cv2.imshow("YOLOv8推断", show_frame)
             else:
                 _, imencode_image = cv2.imencode(".jpg", show_frame)
                 return imencode_image.tobytes()
@@ -251,15 +265,15 @@ class PoseEstimator:
                 self.output.write(frame)
             return
 
-        # Get hyperparameters
+        # 获取运动参数
         left_points_idx = sport_list[self.sport]['left_points_idx']
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
-        # Calculate angle
+        # 计算角度
         angle = calculate_angle(
             results[0].keypoints, left_points_idx, right_points_idx)
 
-        # Determine whether to complete once
+        # 确定是否完成一次
         if angle < sport_list[self.sport]['maintaining']:
             self.reaching = True
         if angle > sport_list[self.sport]['relaxing']:
@@ -273,7 +287,7 @@ class PoseEstimator:
                 self.counter += 1
                 self.state_keep = False
 
-        # Visualize the results on the frame
+        # 在帧上可视化结果
         annotated_frame = plot(
             results[0], plot_size_redio,
             # sport_list[sport]['concerned_key_points_idx'],
@@ -281,20 +295,20 @@ class PoseEstimator:
         )
         # annotated_frame = results[0].plot(boxes=False)
 
-        # add relevant information to frame
+        # 添加相关信息到帧
         put_text(
             annotated_frame, self.sport, self.counter, round(1000 / results[0].speed['inference'], 2), plot_size_redio)
 
         if self.save_dir is not None:
             self.output.write(annotated_frame)
 
-        # Display the annotated frame
+        # 显示注释帧
         if self.show:
             scale = 640 / \
                 max(annotated_frame.shape[0], annotated_frame.shape[1])
             show_frame = cv2.resize(
                 annotated_frame, (0, 0), fx=scale, fy=scale)
-            cv2.imshow("YOLOv8 Inference", show_frame)
+            cv2.imshow("YOLOv8推断", show_frame)
         else:
             # 如果 show 为 False,则通过 WebSocket 发送处理后的帧
             # 转换为 jpeg 格式
@@ -304,21 +318,21 @@ class PoseEstimator:
             return imencode_image.tobytes()
 
     def process(self):
-        # Loop through the video frames
+        # 循环视频帧
         while self.cap.isOpened():
-            # Read a frame from the video
+            # 从视频读取一帧
             success, frame = self.cap.read()
 
             if success:
                 self.process_frame(frame)
-                # Break the loop if 'q' is pressed
+                # 如果按下'q'，则中断循环
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
             else:
-                # Break the loop if the end of the video is reached
+                # 如果到达视频的结尾，中断循环
                 break
 
-        # Release the video capture object and close the display window
+        # 释放视频捕获对象并关闭显示窗口
         self.cap.release()
         if self.save_dir is not None:
             self.output.release()
