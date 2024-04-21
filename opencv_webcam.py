@@ -19,15 +19,6 @@ estimator = PoseEstimator()
 
 
 async def send_frame(websocket: WebSocket):
-    """
-    Sends frames from a video stream over a WebSocket connection.
-
-    Args:
-        websocket (WebSocket): The WebSocket connection to send the frames to.
-
-    Returns:
-        None
-    """
     while estimator.cap.isOpened():
         # Read a frame from the video
         success, frame = estimator.cap.read()
@@ -41,45 +32,31 @@ async def send_frame(websocket: WebSocket):
 
 @app.websocket("/ws/video")
 async def video_stream(websocket: WebSocket):
-    """
-    WebSocket endpoint for streaming video frames.
-
-    Parameters:
-    - websocket: WebSocket object representing the connection with the client.
-
-    Returns:
-    - None
-
-    Raises:
-    - WebSocketDisconnect: If the client disconnects unexpectedly.
-    """
     await websocket.accept()
     connected_clients.add(websocket)
 
     try:
         await send_frame(websocket)
     except WebSocketDisconnect:
-        if estimator.cap.isOpened():
-            # Release the video capture object and close the display window
-            estimator.cap.release()
-            if estimator.save_dir is not None:
-                estimator.output.release()
-            cv2.destroyAllWindows()
-        # Remove the client from the connected clients list when disconnected
-        connected_clients.remove(websocket)
-
-# 关闭 websocket 连接,释放资源
+        # 处理客户端断开连接的情况
+        handle_disconnect(websocket)
+    except Exception as e:
+        # 处理其他异常
+        logging.error(f"Error occurred: {e}")
+        handle_disconnect(websocket)
 
 
-@app.websocket("/ws/close")
-async def close_websocket(websocket: WebSocket):
+def handle_disconnect(websocket: WebSocket):
     if estimator.cap.isOpened():
-        # Release the video capture object and close the display window
+        # 释放视频捕捉对象并关闭显示窗口
         estimator.cap.release()
         if estimator.save_dir is not None:
             estimator.output.release()
         cv2.destroyAllWindows()
-    await websocket.close()
+
+    # 断开连接时从已连接的客户端列表中删除客户端
+    connected_clients.remove(websocket)
+
 
 # 运行 FastAPI 应用
 if __name__ == "__main__":
