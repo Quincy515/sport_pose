@@ -298,27 +298,27 @@ class PoseEstimator:
                 if not self.reaching and self.state_keep:
                     self.counter += 1
                     self.state_keep = False
-        elif (self.sport == 'hight_diff'):
-            # 保存计算左右髋关节的平均高度值
-            left_points = [results[0].keypoints.data[0][i][1]
-                           for i in left_points_idx]
-            right_points = [results[0].keypoints.data[0][i][1]
-                            for i in right_points_idx]
-            flip = (sum(left_points) + sum(right_points)) / 2
-            # 把平均高度值保存到数组
-            self.flip_list.append(flip)
-            # 如果超过2个点就开始比较
-            if len(self.flip_list) >= 2:
-                prev_flip = self.flip_list[len(self.flip_list) - 2]
-                # 开始进行判断计数
-                if flip < prev_flip and self.state_keep == False:
-                    pass
-                elif flip > prev_flip and self.state_keep == True:
-                    pass
-                else:
-                    count = count + 1
-                    self.state_keep = not self.state_keep
-            self.counter = int(count/2)
+        # elif (self.sport == 'hight_diff'):
+        #     # 保存计算左右髋关节的平均高度值
+        #     left_points = [results[0].keypoints.data[0][i][1]
+        #                    for i in left_points_idx]
+        #     right_points = [results[0].keypoints.data[0][i][1]
+        #                     for i in right_points_idx]
+        #     flip = (sum(left_points) + sum(right_points)) / 2
+        #     # 把平均高度值保存到数组
+        #     self.flip_list.append(flip)
+        #     # 如果超过2个点就开始比较
+        #     if len(self.flip_list) >= 2:
+        #         prev_flip = self.flip_list[len(self.flip_list) - 2]
+        #         # 开始进行判断计数
+        #         if flip < prev_flip and self.state_keep == False:
+        #             pass
+        #         elif flip > prev_flip and self.state_keep == True:
+        #             pass
+        #         else:
+        #             count = count + 1
+        #             self.state_keep = not self.state_keep
+        #     self.counter = int(count/2)
 
         # 在帧上可视化结果
         annotated_frame = plot(
