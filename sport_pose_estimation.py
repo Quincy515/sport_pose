@@ -245,7 +245,8 @@ class PoseEstimator:
 
     def process_frame(self, frame):
         # 设置不同分辨率输入的绘图大小比例
-        plot_size_redio = max(frame.shape[1] / 960, frame.shape[0] / 540)
+        # plot_size_redio = max(frame.shape[1] / 960, frame.shape[0] / 540)
+        plot_size_redio = max(frame.shape[1] / 1920, frame.shape[0] / 1080)
 
         # 在帧上运行YOLOv8推断
         results = self.model(frame)
