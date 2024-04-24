@@ -45,8 +45,7 @@ sport_list = {
         # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
-    # hight_diff
-    'hight_diff': {
+    'hight': {
         'left_points_idx': [11],  # 左侧关键点索引
         'right_points_idx': [12],  # 右侧关键点索引
         'maintaining': 20,  # 维持姿势的度量
@@ -279,7 +278,7 @@ class PoseEstimator:
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
         # 如果是 hight_diff 运动，通过波峰波谷计数
-        if (self.sport != 'hight_diff'):
+        if (self.sport != 'hight'):
             # 计算角度
             angle = calculate_angle(
                 results[0].keypoints, left_points_idx, right_points_idx)
@@ -297,7 +296,7 @@ class PoseEstimator:
                 if not self.reaching and self.state_keep:
                     self.counter += 1
                     self.state_keep = False
-        elif (self.sport == 'hight_diff'):
+        elif (self.sport == 'hight'):
             # 保存计算左右髋关节的平均高度值
             left_points = [results[0].keypoints.data[0][i][1]
                            for i in left_points_idx]
@@ -338,9 +337,14 @@ class PoseEstimator:
                 annotated_frame, (0, 0), fx=scale, fy=scale)
             cv2.imshow("YOLOv8推断", show_frame)
         else:
+            # 调整显示图片尺寸
+            scale = 640 / \
+                max(annotated_frame.shape[0], annotated_frame.shape[1])
+            show_frame = cv2.resize(
+                annotated_frame, (1080, 1920), fx=scale, fy=scale)
             # 如果 show 为 False,则通过 WebSocket 发送处理后的帧
             # 转换为 jpeg 格式
-            _, imencode_image = cv2.imencode(".jpg", annotated_frame)
+            _, imencode_image = cv2.imencode(".jpg", show_frame)
             # base64_image = base64.b64encode(
             #     imencode_image).decode("utf-8")
             return imencode_image.tobytes()
