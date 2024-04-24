@@ -45,6 +45,13 @@ sport_list = {
         # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
+    # hight_diff
+    'hight_diff': {
+        'left_points_idx': [11],  # 左侧关键点索引
+        'right_points_idx': [12],  # 右侧关键点索引
+        'maintaining': 20,  # 维持姿势的度量
+        'relaxing': 140,  # 放松时的度量
+    },
 }
 
 
@@ -242,6 +249,7 @@ class PoseEstimator:
         self.reaching_last = False
         self.state_keep = False
         self.counter = 0
+        self.flip_list = []
 
     def process_frame(self, frame):
         # 设置不同分辨率输入的绘图大小比例
@@ -271,23 +279,46 @@ class PoseEstimator:
         left_points_idx = sport_list[self.sport]['left_points_idx']
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
-        # 计算角度
-        angle = calculate_angle(
-            results[0].keypoints, left_points_idx, right_points_idx)
+        # 如果是 hight_diff 运动，通过波峰波谷计数
+        if (self.sport != 'hight_diff'):
+            # 计算角度
+            angle = calculate_angle(
+                results[0].keypoints, left_points_idx, right_points_idx)
 
-        # 确定是否完成一次
-        if angle < sport_list[self.sport]['maintaining']:
-            self.reaching = True
-        if angle > sport_list[self.sport]['relaxing']:
-            self.reaching = False
+            # 确定是否完成一次
+            if angle < sport_list[self.sport]['maintaining']:
+                self.reaching = True
+            if angle > sport_list[self.sport]['relaxing']:
+                self.reaching = False
 
-        if self.reaching != self.reaching_last:
-            self.reaching_last = self.reaching
-            if self.reaching:
-                self.state_keep = True
-            if not self.reaching and self.state_keep:
-                self.counter += 1
-                self.state_keep = False
+            if self.reaching != self.reaching_last:
+                self.reaching_last = self.reaching
+                if self.reaching:
+                    self.state_keep = True
+                if not self.reaching and self.state_keep:
+                    self.counter += 1
+                    self.state_keep = False
+        elif (self.sport == 'hight_diff'):
+            # 保存计算左右髋关节的平均高度值
+            left_points = [results[0].keypoints.data[0][i][1]
+                           for i in left_points_idx]
+            right_points = [results[0].keypoints.data[0][i][1]
+                            for i in right_points_idx]
+            flip = (sum(left_points) + sum(right_points)) / 2
+            # 把平均高度值保存到数组
+            self.flip_list.append(flip)
+            # 如果超过2个点就开始比较
+            if len(self.flip_list) >= 2:
+                prev_flip = self.flip_list[len(self.flip_list) - 2]
+                # 开始进行判断计数
+                if flip < prev_flip and self.state_keep == False:
+                    pass
+                elif flip > prev_flip and self.state_keep == True:
+                    pass
+                else:
+                    count = count + 1
+                    self.state_keep = not self.state_keep
+            self.counter = int(count/2)
 
         # 在帧上可视化结果
         annotated_frame = plot(
