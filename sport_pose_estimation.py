@@ -45,11 +45,13 @@ sport_list = {
         # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
-    'hight': {
+    'diff': {
         'left_points_idx': [11],  # 左侧关键点索引
         'right_points_idx': [12],  # 右侧关键点索引
         'maintaining': 20,  # 维持姿势的度量
         'relaxing': 140,  # 放松时的度量
+        'concerned_key_points_idx': [11, 12, 13, 14, 15],
+        'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
 }
 
@@ -277,8 +279,8 @@ class PoseEstimator:
         left_points_idx = sport_list[self.sport]['left_points_idx']
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
-        # 如果是 hight_diff 运动，通过波峰波谷计数
-        if (self.sport != 'hight'):
+        # 如果是 diff 运动，通过波峰波谷计数
+        if (self.sport != 'diff'):
             # 计算角度
             angle = calculate_angle(
                 results[0].keypoints, left_points_idx, right_points_idx)
@@ -296,7 +298,7 @@ class PoseEstimator:
                 if not self.reaching and self.state_keep:
                     self.counter += 1
                     self.state_keep = False
-        elif (self.sport == 'hight'):
+        elif (self.sport == 'diff'):
             # 保存计算左右髋关节的平均高度值
             left_points = [results[0].keypoints.data[0][i][1]
                            for i in left_points_idx]
