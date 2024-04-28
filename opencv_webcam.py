@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import base64
+import gzip
 import logging
 import cv2
 import numpy as np
@@ -24,8 +25,11 @@ async def send_frame(websocket: WebSocket, estimator: PoseEstimator):
 
         if success:
             jpeg = estimator.process_frame(frame)
+            # 方法二：使用 gzip 压缩图像数据
+            jpeg_compressed = gzip.compress(jpeg)
             if jpeg is not None:
-                await websocket.send_bytes(jpeg)
+                # await websocket.send_bytes(jpeg)
+                await websocket.send_bytes(jpeg_compressed)
                 await asyncio.sleep(0.01)
 
 

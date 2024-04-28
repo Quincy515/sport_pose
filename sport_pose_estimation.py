@@ -45,12 +45,21 @@ sport_list = {
         # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
+    # 'diff': {
+    #     'left_points_idx': [11],  # 左侧关键点索引
+    #     'right_points_idx': [12],  # 右侧关键点索引
+    #     'maintaining': 20,  # 维持姿势的度量
+    #     'relaxing': 140,  # 放松时的度量
+    #     'concerned_key_points_idx': [11, 12, 13, 14, 15],
+    #     'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
+    # },
     'diff': {
-        'left_points_idx': [11],  # 左侧关键点索引
-        'right_points_idx': [12],  # 右侧关键点索引
+        'left_points_idx': [11, 13, 15],  # 左侧关键点索引
+        'right_points_idx': [12, 14, 16],  # 右侧关键点索引
         'maintaining': 20,  # 维持姿势的度量
         'relaxing': 140,  # 放松时的度量
-        'concerned_key_points_idx': [11, 12, 13, 14, 15],
+        'concerned_key_points_idx': [11, 12, 13, 14, 15],  # 关注的关键点索引
+        # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
 }
@@ -58,15 +67,15 @@ sport_list = {
 
 def calculate_angle(key_points, left_points_idx, right_points_idx):
     def _calculate_angle(line1, line2):
-        # Calculate the slope of two straight lines
+        # 计算两条直线的斜率
         slope1 = math.atan2(line1[3] - line1[1], line1[2] - line1[0])
         slope2 = math.atan2(line2[3] - line2[1], line2[2] - line2[0])
 
-        # Convert radians to angles
+        # 将斜率转换为角度
         angle1 = math.degrees(slope1)
         angle2 = math.degrees(slope2)
 
-        # Calculate angle difference
+        # 计算角度差
         angle_diff = abs(angle1 - angle2)
 
         # Ensure the angle is between 0 and 180 degrees
@@ -98,6 +107,54 @@ def calculate_angle(key_points, left_points_idx, right_points_idx):
     ]
     angle_right = _calculate_angle(line1_right, line2_right)
     angle = (angle_left + angle_right) / 2
+    return angle
+
+
+def calculate_angle_filter(sports_name, key_points, left_points_idx, right_points_idx):
+    def _calculate_angle(line1, line2):
+        # 计算两条直线的斜率
+        slope1 = math.atan2(line1[3] - line1[1], line1[2] - line1[0])
+        slope2 = math.atan2(line2[3] - line2[1], line2[2] - line2[0])
+
+        # 将斜率转换为角度
+        angle1 = math.degrees(slope1)
+        angle2 = math.degrees(slope2)
+
+        # 计算角度差
+        angle_diff = abs(angle1 - angle2)
+
+        # Ensure the angle is between 0 and 180 degrees
+        if angle_diff > 180:
+            angle_diff = 360 - angle_diff
+
+        return angle_diff
+
+    left_points = [[key_points.data[0][i][0], key_points.data[0][i][1]]
+                   for i in left_points_idx]
+    right_points = [[key_points.data[0][i][0], key_points.data[0][i][1]]
+                    for i in right_points_idx]
+    line1_left = [
+        left_points[1][0].item(), left_points[1][1].item(),
+        left_points[0][0].item(), left_points[0][1].item()
+    ]
+    line2_left = [
+        left_points[1][0].item(), left_points[1][1].item(),
+        left_points[2][0].item(), left_points[2][1].item()
+    ]
+    angle_left = _calculate_angle(line1_left, line2_left)
+    line1_right = [
+        right_points[1][0].item(), right_points[1][1].item(),
+        right_points[0][0].item(), right_points[0][1].item()
+    ]
+    line2_right = [
+        right_points[1][0].item(), right_points[1][1].item(),
+        right_points[2][0].item(), right_points[2][1].item()
+    ]
+    angle_right = _calculate_angle(line1_right, line2_right)
+    if (sports_name == 'diff'):
+        angle = max(angle_left, angle_right)
+    else:
+        angle = (angle_left + angle_right) / 2
     return angle
 
 
@@ -223,6 +280,13 @@ class PoseEstimator:
         # 打开视频文件或摄像头
         if input.isnumeric():
             self.cap = cv2.VideoCapture(int(input))
+            # 选择清晰度, 要确保所设置的分辨率是摄像头支持的
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)  # 设置帧宽度为 1080
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1920)  # 设置帧高度为 1920
+            # 检查是否成功设置清晰度
+            width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            print(f"当前摄像头分辨率：{width}x{height}")
         else:
             self.cap = cv2.VideoCapture(input)
 
@@ -280,6 +344,7 @@ class PoseEstimator:
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
         # 如果是 diff 运动，通过波峰波谷计数
+        '''
         if (self.sport != 'diff'):
             # 计算角度
             angle = calculate_angle(
@@ -315,7 +380,23 @@ class PoseEstimator:
                     count = count + 1
                     self.state_keep = not self.state_keep
             self.counter = int(count/2)
+        '''
+        angle = calculate_angle_filter(self.sport,
+                                       results[0].keypoints, left_points_idx, right_points_idx)
 
+        # 确定是否完成一次
+        if angle < sport_list[self.sport]['maintaining']:
+            self.reaching = True
+        if angle > sport_list[self.sport]['relaxing']:
+            self.reaching = False
+
+        if self.reaching != self.reaching_last:
+            self.reaching_last = self.reaching
+            if self.reaching:
+                self.state_keep = True
+            if not self.reaching and self.state_keep:
+                self.counter += 1
+                self.state_keep = False
         # 在帧上可视化结果
         annotated_frame = plot(
             results[0], plot_size_redio,
