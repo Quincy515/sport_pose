@@ -22,14 +22,11 @@ async def send_frame(websocket: WebSocket, estimator: PoseEstimator):
     while estimator.cap.isOpened():
         # 从视频中读取一帧
         success, frame = estimator.cap.read()
-
         if success:
             jpeg = estimator.process_frame(frame)
-            # 方法二：使用 gzip 压缩图像数据
-            jpeg_compressed = gzip.compress(jpeg)
             if jpeg is not None:
+                await websocket.send_text(jpeg)
                 # await websocket.send_bytes(jpeg)
-                await websocket.send_bytes(jpeg_compressed)
                 await asyncio.sleep(0.01)
 
 

@@ -45,14 +45,6 @@ sport_list = {
         # 关注的骨架索引
         'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
     },
-    # 'diff': {
-    #     'left_points_idx': [11],  # 左侧关键点索引
-    #     'right_points_idx': [12],  # 右侧关键点索引
-    #     'maintaining': 20,  # 维持姿势的度量
-    #     'relaxing': 140,  # 放松时的度量
-    #     'concerned_key_points_idx': [11, 12, 13, 14, 15],
-    #     'concerned_skeletons_idx': [[16, 14], [14, 12], [15, 13], [13, 11]]
-    # },
     'diff': {
         'left_points_idx': [11, 13, 15],  # 左侧关键点索引
         'right_points_idx': [12, 14, 16],  # 右侧关键点索引
@@ -262,6 +254,33 @@ def put_text(frame, exercise, count, fps, redio):
                                int(150 * redio)), 0, 0.9 * redio,
         (255, 255, 255), thickness=int(2 * redio), lineType=cv2.LINE_AA
     )
+    # 在图像帧上底部绘制一个矩形作为站位检测框
+    cv2.rectangle(
+        frame, (int(1220 * redio), int(720 * redio)
+                ), (int(1240 * redio), int(740 * redio)),
+        (55, 104, 0), -1
+    )
+
+
+# 判断人体是否在站位检测框内
+def func_judge_human_in_center(keypoints):
+    # 获取左脚和右脚的坐标点
+    left_foot = keypoints.data[0][15]
+    right_foot = keypoints.data[0][16]
+
+    # 定义站位检测框的坐标范围
+    center_box_x_min = 1220
+    center_box_x_max = 1240
+    center_box_y_min = 720
+    center_box_y_max = 740
+
+    # 判断左脚或右脚的坐标点是否在站位检测框中
+    if center_box_x_min <= left_foot[0] <= center_box_x_max and center_box_y_min <= left_foot[1] <= center_box_y_max:
+        return True
+    elif center_box_x_min <= right_foot[0] <= center_box_x_max and center_box_y_min <= right_foot[1] <= center_box_y_max:
+        return True
+    else:
+        return False
 
 
 class PoseEstimator:
@@ -280,9 +299,11 @@ class PoseEstimator:
         # 打开视频文件或摄像头
         if input.isnumeric():
             self.cap = cv2.VideoCapture(int(input))
+            # 设置帧率为30帧/秒
+            self.cap.set(cv2.CAP_PROP_FPS, 30)
             # 选择清晰度, 要确保所设置的分辨率是摄像头支持的
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1080)  # 设置帧宽度为 1080
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1920)  # 设置帧高度为 1920
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 设置帧宽度
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)  # 设置帧高度
             # 检查是否成功设置清晰度
             width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
             height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
@@ -315,6 +336,8 @@ class PoseEstimator:
         self.state_keep = False
         self.counter = 0
         self.flip_list = []
+        # 判断人体是否在框内
+        self.judge_human_in_center = false
 
     def process_frame(self, frame):
         # 设置不同分辨率输入的绘图大小比例
@@ -323,8 +346,10 @@ class PoseEstimator:
         # 在帧上运行YOLOv8推断
         results = self.model(frame)
 
-        # 防止特殊情况导致的错误
-        if results[0].keypoints.shape[1] == 0:
+        # 判断人体是否在框内
+        is_detect = func_judge_human_in_center(results[0].keypoints)
+        # 防止特殊情况导致的错误, 如果人不在框内，不进行运动检测
+        if results[0].keypoints.shape[1] == 0 and not is_detect:
             put_text(frame, '无目标', self.counter,
                      round(1000 / results[0].speed['inference'], 2), plot_size_redio)
             scale = 640 / max(frame.shape[0], frame.shape[1])
@@ -333,7 +358,11 @@ class PoseEstimator:
                 cv2.imshow("YOLOv8推断", show_frame)
             else:
                 _, imencode_image = cv2.imencode(".jpg", show_frame)
-                return imencode_image.tobytes()
+                # return imencode_image.tobytes()
+
+                base64_image = base64.b64encode(
+                    imencode_image).decode("utf-8")
+                return imencode_image + str(',')
 
             if self.save_dir is not None:
                 self.output.write(frame)
@@ -343,44 +372,6 @@ class PoseEstimator:
         left_points_idx = sport_list[self.sport]['left_points_idx']
         right_points_idx = sport_list[self.sport]['right_points_idx']
 
-        # 如果是 diff 运动，通过波峰波谷计数
-        '''
-        if (self.sport != 'diff'):
-            # 计算角度
-            angle = calculate_angle(
-                results[0].keypoints, left_points_idx, right_points_idx)
-
-            # 确定是否完成一次
-            if angle < sport_list[self.sport]['maintaining']:
-                self.reaching = True
-            if angle > sport_list[self.sport]['relaxing']:
-                self.reaching = False
-
-            if self.reaching != self.reaching_last:
-                self.reaching_last = self.reaching
-                if self.reaching:
-                    self.state_keep = True
-                if not self.reaching and self.state_keep:
-                    self.counter += 1
-                    self.state_keep = False
-        elif (self.sport == 'diff'):
-            # 保存计算左右髋关节的平均高度值
-            left_points = [results[0].keypoints.data[0][i][1]
-                           for i in left_points_idx]
-            right_points = [results[0].keypoints.data[0][i][1]
-                            for i in right_points_idx]
-            flip = (sum(left_points) + sum(right_points)) / 2
-            # 把平均高度值保存到数组
-            self.flip_list.append(flip)
-            # 如果超过2个点就开始比较
-            if len(self.flip_list) >= 2:
-                prev_flip = self.flip_list[len(self.flip_list) - 2]
-                # 开始进行判断计数
-                if (flip <= prev_flip or self.state_keep != False) and (flip >= prev_flip or self.state_keep != True):
-                    count = count + 1
-                    self.state_keep = not self.state_keep
-            self.counter = int(count/2)
-        '''
         angle = calculate_angle_filter(self.sport,
                                        results[0].keypoints, left_points_idx, right_points_idx)
 
@@ -428,9 +419,12 @@ class PoseEstimator:
             # 如果 show 为 False,则通过 WebSocket 发送处理后的帧
             # 转换为 jpeg 格式
             _, imencode_image = cv2.imencode(".jpg", show_frame)
-            # base64_image = base64.b64encode(
-            #     imencode_image).decode("utf-8")
-            return imencode_image.tobytes()
+            base64_image = base64.b64encode(
+                imencode_image).decode("utf-8")
+            # return base64_image.tobytes()
+            # base64 图片和个数拼接为字符串
+            result_str = base64_image + str(',') + str(self.counter)
+            return result_str
 
     def process(self):
         # 循环视频帧
